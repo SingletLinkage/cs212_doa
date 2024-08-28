@@ -3,90 +3,56 @@ import numpy as np
 from copy import deepcopy
 import sys
 import matplotlib.pyplot as plt
+import json
 
 sys.setrecursionlimit(100000)
 
-def calculate_time_taken(func):
-    
-    def get_time_taken(*args, **kwargs):
-        begin = time.perf_counter()
-        func(*args, **kwargs)
-        end = time.perf_counter()
+def get_test_set(length: int):
+    np.random.RandomState(1)
+    # [random, sorted, reverse-sorted, many_duplicates]
+    _random: list[int] = list(np.random.randint(low=0, high=1e7, size=(length, )))  # randomly selecting `length` number of integers between 0 and 10**7
+    _sorted: list[int] = sorted(_random)  # sort the values
+    _reverse: list[int] = _sorted[::-1]  # reverse the sorted array
+    # selecting a specific (length/3) number of elements and tiling the list 5 times then shuffling and extracting the first `length` number of elements
+    _duplicates: list[int] = _random[:int(length//3)]*5
+    np.random.shuffle(_duplicates)
+    _duplicates = _duplicates[:length]
+    return _random, _sorted, _reverse, _duplicates
 
-        # print(f"Time Taken: {end-begin} ns")
-        return round(end-begin, 7)
+def write_to_file(length):
+    _test_sets = get_test_set(length)
+    with open(f'inputfile_{length}.json', 'w') as file:
+        json.dump(dict(zip(['random', 'sorted', 'reverse', 'duplicates'], [','.join(map(str, _set)) for _set in _test_sets])), file)
 
-    return get_time_taken
+def get_from_file(length):
+    stuff = dict()
+    with open(f'inputfile_{length}.json', 'r') as file:
+        stuff = json.load(file)
+    return {k: list(map(int, v.split(','))) for (k,v) in stuff.items()}
 
-# Not needed now
-def generate_random_test_case(length, input_type='random', display=True, random_state=1023):
-    np.random.seed(random_state)
+def complete_analysis(func, test_len: int = 1000):
+    _test_case_set: dict[str: list[int]] = get_from_file(test_len)
+    _time_taken: dict[str: float] = dict(zip(_test_case_set.keys(), [0.]*4)) # list to store benchmark times
 
-    def inner(func):
-
-        def wrapper(*args, **kwargs):
-            print(f'Test Case: type={input_type}, length={length}')
-
-            random_list = list(np.random.randint(low=0, high=int(1e7), size=(length,)))
-            if input_type == 'sorted':
-                random_list = sorted(random_list)
-            elif input_type == 'reverse-sorted':
-                random_list = sorted(random_list, reverse=True)
-
-            result = func(deepcopy(random_list), *args, **kwargs)
-
-            if display: 
-                print("Input Numbers: \t\t", random_list)
-                print("Result after Sorting: \t", result)
-
-            return result
-        return wrapper
-    return inner
-
-
-
-def complete_analysis(func):
-
-    def get_test_set(length: int):
-        # [random, sorted, reverse-sorted, many_duplicates]
-        _random = list(np.random.randint(low=0, high=10**7, size=(length, )))
-        _sorted = sorted(_random)
-        _reverse = _sorted[::-1]
-        _duplicates = _random[:int(length//3)]*4
-        np.random.shuffle(_duplicates)
-        _duplicates = _duplicates[:length]
-
-        return _random, _sorted, _reverse, _duplicates
-
-    def inner(*args, **kwargs):
-
-        _len_test_cases = kwargs.get('test_len', 1000)
-        _test_case_set = get_test_set(_len_test_cases)
-        _time_taken = [-1]*4
-
-        for _idx, _case in enumerate(_test_case_set):
-            _time = calculate_time_taken(func)(array=_case)
-            _time_taken[_idx] = _time
+    for _type, _case in _test_case_set.items():
+        _copied_case = deepcopy(_case)
+        _t1 = _t2 = 0
+        _t1: float = time.perf_counter()  # begin time count
+        func(_copied_case)
+        _t2: float = time.perf_counter()  # end time count
+        _time_taken[_type] = round(_t2-_t1, 6)
         
-        print(f'''
+    print(f'''
 Sorting Technique: {func.__name__}
-Number of Elements: {_len_test_cases}
+Number of Elements: {test_len}
 Cases:
-    1. Random Order: \t\t{_time_taken[0]} s
-    2. Sorted Order: \t\t{_time_taken[1]} s
-    3. Reverse Sorted Order: \t{_time_taken[2]} s
-    4. With many duplicates: \t{_time_taken[3]} s
+    1. Random Order: \t\t{_time_taken['random']} s
+    2. Sorted Order: \t\t{_time_taken['sorted']} s
+    3. Reverse Sorted Order: \t{_time_taken['reverse']} s
+    4. With many duplicates: \t{_time_taken['duplicates']} s
         ''')
-        plt.bar(['Random', 'Sorted', "Reverse-Sorted", 'Duplicates'], _time_taken)
-        plt.xlabel('Type of Data')
-        plt.ylabel('Time Taken in seconds')
-        plt.title(f'{func.__name__} with n={_len_test_cases}')
-        plt.show()
-            
-    return inner
+    return _time_taken            
 
-# @generate_random_test_case(length=int(1e4), input_type='random', display=False)
-# @calculate_time_taken
 def insertion_sort(array: list[int]):
     n: int = len(array)  # number of elements in the array
     for i  in range(1, n):   # since 1st element is already sorted
@@ -99,15 +65,6 @@ def insertion_sort(array: list[int]):
 
         array[j+1] = key
     
-    return array
-
-# @generate_random_test_case(length=int(1e4), input_type='random', display=False)
-# @calculate_time_taken
-def merge_sort_wrapper(array: list[int]):
-    begin=0
-    end = len(array)
-    merge_sort(array, begin, end)
-
 def merge_sort(array: list[int], begin:int=0, end:int|None=None):
     if end is None:
         end=len(array)
@@ -115,17 +72,16 @@ def merge_sort(array: list[int], begin:int=0, end:int|None=None):
     if end - begin <= 1:
         return
     else:
-        mid = int(begin + (end-begin)//2)
+        mid: int = int(begin + (end-begin)//2)
         merge_sort(array, begin, mid)
         merge_sort(array, mid, end)
         merge(array, begin, mid, end)
 
-
 def merge(array, begin, mid, end):
-    _temp = [-1]*(end-begin)
-    i=begin
-    j=mid
-    k=0
+    _temp: list[int] = [-1]*(end-begin)
+    i: int = begin
+    j: int = mid
+    k: int = 0
 
     while i < mid and j < end:
         if array[i] > array[j]:
@@ -150,7 +106,6 @@ def merge(array, begin, mid, end):
     for i in range(begin, end):
         array[i] = _temp[i-begin]
 
-
 def quick_sort(array, begin=0, end=None):
     if end is None:
         end = len(array)
@@ -162,15 +117,29 @@ def quick_sort(array, begin=0, end=None):
     quick_sort(array, begin, pi)
     quick_sort(array, pi+1, end)
 
+def random_quick_sort(array, begin=0, end=None):
+    if end is None:
+        end = len(array)
 
-def partition(array, begin, end):
+    if end-begin <= 1:
+        return
+    
+    pi = partition(array, begin, end, random=True)
+    random_quick_sort(array, begin, pi)
+    random_quick_sort(array, pi+1, end)
+
+def partition(array, begin, end, random=False):
     
     # Using Median of Three Heuristic:
-    pivot, pivot_idx = sorted([(array[i], i) for i in [begin, begin + int((end-begin)//2), end-1]], key=lambda x: x[0])[1]
-    array[end-1], array[pivot_idx] = pivot, array[end-1]
+    # pivot, pivot_idx = sorted([(array[i], i) for i in [begin, begin + int((end-begin)//2), end-1]], key=lambda x: x[0])[1]
+    # array[end-1], array[pivot_idx] = pivot, array[end-1]
 
     # Using end element as pivot
-    # pivot = array[end-1]
+    if not random:
+        pivot = array[end-1]
+    else:
+        pivot, pivot_idx = sorted([(array[i], i) for i in [begin, begin + int((end-begin)//2), end-1]], key=lambda x: x[0])[1]
+        array[end-1], array[pivot_idx] = pivot, array[end-1]
 
     i = begin
     for j in range(begin, end-1):
@@ -182,28 +151,29 @@ def partition(array, begin, end):
     array[i], array[end-1] = array[end-1], array[i]
     return i
 
-
-
-
 if __name__ == '__main__':
-    # complete_analysis(insertion_sort)(test_len=10000)
-    complete_analysis(merge_sort)(test_len=10000)
-
-    complete_analysis(quick_sort)(test_len=10000)
-
-
-    # insertion_sort()
-    # array = [2,51,9,23,46,1,234,8,19]
-    # i = partition(0, len(array), array)
-    # print(array, i)
-    # print(array)
-    # quick_sort(0, len(array), array)
-    # print(array)
-    # merge_sort_wrapper()
-    # array = list(np.random.randint(0, 10**7, (10**4,)))
-    # print('With random: ')
-    # insertion_sort(array=array)
-
-    # array = sorted(array, reverse=True)
-    # print("With Reverse Sorted: ")
-    # insertion_sort(array=array)
+    dataset = dict()
+    for func in [insertion_sort, merge_sort, quick_sort, random_quick_sort]:
+        dataset[func.__name__] = dict()
+        for i in [100, 1000, 10000]:
+            dataset[func.__name__][i] = complete_analysis(func, test_len=i)
+    
+    # some cool plots
+    fig, ax = plt.subplots(4, 3, figsize=(15, 15))
+    for i, (func, data) in enumerate(dataset.items()):
+        for j, (n, times) in enumerate(data.items()):
+            ax[i, j].bar(times.keys(), times.values(), color=['red', 'green', 'blue', 'orange'])
+            ax[i, j].set_title(f'{func} with n={n}')
+            ax[i, j].set_ylabel('Time Taken in seconds')
+    plt.tight_layout()
+    plt.show()
+    
+    # compare performance of all algo for 1000 elements
+    fig, ax = plt.subplots(1, 1, figsize=(10, 5))
+    for func, data in dataset.items():
+        ax.plot(data[1000].keys(), data[1000].values(), label=func)
+    ax.set_title('Performance of Sorting Algorithms for 1000 elements')
+    ax.set_xlabel('Cases')
+    ax.set_ylabel('Time Taken in seconds')
+    ax.legend()
+    plt.show()
