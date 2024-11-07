@@ -66,10 +66,10 @@ def insertion_sort(array: list[float]):
         array[j+1] = key
     
 def bucket_sort(array: list[float]):
-    buckets = [[] for _ in range(len(array))]
+    buckets = [[] for _ in range(len(array)+1)]
 
     for item in array:
-        buckets[min(int(item*len(array)),len(array)-1)].append(item)
+        buckets[int(item*len(array))].append(item)
     
     for bucket in buckets:
         insertion_sort(bucket)
@@ -88,7 +88,7 @@ def radix_sort(array: list[int]):
 
 if __name__ == '__main__':
     dataset = dict()
-    for func in [radix_sort, bucket_sort]:
+    for func in [bucket_sort, radix_sort]:
         dataset[func.__name__] = dict()
         for i in [100, 1000, 10000]:
             dataset[func.__name__][i] = complete_analysis(func, test_len=i)
@@ -100,17 +100,5 @@ if __name__ == '__main__':
             ax[i, j].bar(times.keys(), times.values(), color=['red', 'green', 'blue', 'orange'])
             ax[i, j].set_title(f'{func} with n={n}')
             ax[i, j].set_ylabel('Time Taken in seconds')
-    plt.tight_layout()
-    plt.show()
-    
-    # compare performance of all algo for elements
-    fig, ax = plt.subplots(1, 3, figsize=(10, 5))
-    for func, data in dataset.items():
-        for i in [2,3,4]:
-            ax[i-2].bar(data[10**i].keys(), data[10**i].values(), label=func, alpha=0.5)
-            ax[i-2].set_title(f'Performance of Sorting Algorithms for {10**i} elements')
-            ax[i-2].set_xlabel('Cases')
-            ax[i-2].set_ylabel('Time Taken in seconds')
-            ax[i-2].legend()
     plt.tight_layout()
     plt.show()
